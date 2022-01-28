@@ -2,7 +2,10 @@ import * as fs from 'fs';
 import mkdirp = require('mkdirp');
 import * as path from 'path';
 import * as stream from 'stream';
-import { Errorable, err, ok, isErr } from "./errorable";
+import * as tar from 'tar';
+import * as tmp from 'tmp';
+import { Errorable, err, ok, isErr, isOk } from "./errorable";
+import { longRunning } from './longrunning';
 
 const BINDLE_DONWLOAD_URL_TEMPLATE = "https://bindle.blob.core.windows.net/releases/bindle-v0.7.1-{{subst:os}}-{{subst:arch}}.tar.gz";
 const BINDLE_TOOL_NAME = "bindle";
@@ -10,9 +13,10 @@ const BINDLE_BIN_NAME = "bindle";
 
 export async function ensureBindleInstalled(): Promise<Errorable<string>> {
     const toolFile = installLocation(BINDLE_TOOL_NAME, BINDLE_BIN_NAME);
-    const status = fs.statSync(toolFile);
-    if (!status.isFile()) {
-        const downloadResult = await downloadBindleTo(toolFile);
+    if (!fs.existsSync(toolFile)) {
+        const downloadResult = await longRunning("Downloading Bindle executable", () =>
+            downloadBindleTo(toolFile)
+        );
         if (isErr(downloadResult)) {
             return downloadResult;
         }
@@ -21,21 +25,24 @@ export async function ensureBindleInstalled(): Promise<Errorable<string>> {
 }
 
 async function downloadBindleTo(toolFile: string): Promise<Errorable<null>> {
+    const toolDir = path.dirname(toolFile);
+
     const sourceUrl = downloadSource();
     if (isErr(sourceUrl)) {
         return sourceUrl;
     }
 
-    mkdirp.sync(path.dirname(toolFile));
+    mkdirp.sync(toolDir);
 
-    const downloadResult = await downloadTo(sourceUrl.value, toolFile);
+    const downloadResult = await downloadToTempFile(sourceUrl.value);
     if (isErr(downloadResult)) {
         return downloadResult;
     }
 
-    makeExecutable(toolFile);
+    const archiveFile = downloadResult.value;
+    const unarchiveResult = await untar(archiveFile, toolDir);
 
-    return ok(null);
+    return unarchiveResult;
 }
 
 function downloadSource(): Errorable<string> {
@@ -58,14 +65,6 @@ export function installLocation(tool: string, bin: string): string {
     const binSuffix = process.platform === 'win32' ? '.exe' : '';
     const toolFile = path.join(toolPath, bin + binSuffix);
     return toolFile;
-}
-
-function makeExecutable(file: string): void {
-    if (process.platform === 'win32') {
-        // do nothing
-    } else {
-        fs.chmodSync(file, '0755');
-    }
 }
 
 function os(): string | null {
@@ -109,7 +108,7 @@ function download(url: string, destinationFile: string): Promise<Buffer> & strea
     }
 }
 
-export async function downloadTo(sourceUrl: string, destinationFile: string): Promise<Errorable<null>> {
+async function downloadTo(sourceUrl: string, destinationFile: string): Promise<Errorable<null>> {
     ensureDownloadFunc();
     try {
         await download(sourceUrl, destinationFile);
@@ -117,6 +116,15 @@ export async function downloadTo(sourceUrl: string, destinationFile: string): Pr
     } catch (e) {
         return err((e as Error).message);
     }
+}
+
+async function downloadToTempFile(sourceUrl: string): Promise<Errorable<string>> {
+    const tempFileObj = tmp.fileSync({ prefix: "bindle-autoinstall-" });
+    const downloadResult = await downloadTo(sourceUrl, tempFileObj.name);
+    if (isOk(downloadResult)) {
+        return ok(tempFileObj.name);
+    }
+    return err(downloadResult.message);
 }
 
 function home(): string {
@@ -135,4 +143,20 @@ function concatIfSafe(homeDrive: string | undefined, homePath: string | undefine
     }
 
     return undefined;
+}
+
+async function untar(sourceFile: string, destinationFolder: string): Promise<Errorable<null>> {
+    try {
+        if (!fs.existsSync(destinationFolder)) {
+            mkdirp.sync(destinationFolder);
+        }
+        await tar.x({
+            cwd: destinationFolder,
+            file: sourceFile
+        });
+        return ok(null);
+    } catch (e) {
+        console.log(e);
+        return err("tar extract failed");
+    }
 }

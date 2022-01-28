@@ -21,3 +21,7 @@ export function err<T>(message: string): Errorable<T> {
 export function isErr<T>(obj: Errorable<T>): obj is Err {
     return !obj.succeeded;
 }
+
+export function isOk<T>(obj: Errorable<T>): obj is Ok<T> {
+    return obj.succeeded;
+}
