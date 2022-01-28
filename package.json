@@ -46,6 +46,7 @@
                     "default": 8080
                 },
                 "autobindle.environments": {
+                    "scope": "machine",
                     "type": "array",
                     "items": {
                         "properties": {
@@ -56,7 +57,10 @@
                                 "type": "string"
                             }
                         },
-                        "required": ["name", "path"]
+                        "required": [
+                            "name",
+                            "path"
+                        ]
                     }
                 },
                 "autobindle.activeEnvironment": {
@@ -77,19 +81,28 @@
         "test": "node ./out/test/runTest.js"
     },
     "devDependencies": {
-        "@types/vscode": "^1.63.0",
         "@types/glob": "^7.2.0",
+        "@types/mkdirp": "^1.0.2",
         "@types/mocha": "^9.0.0",
         "@types/node": "14.x",
+        "@types/tar": "^6.1.1",
+        "@types/tmp": "^0.2.3",
+        "@types/vscode": "^1.63.0",
         "@typescript-eslint/eslint-plugin": "^5.9.1",
         "@typescript-eslint/parser": "^5.9.1",
+        "@vscode/test-electron": "^2.0.3",
         "eslint": "^8.6.0",
         "glob": "^7.2.0",
         "mocha": "^9.1.3",
-        "typescript": "^4.5.4",
         "ts-loader": "^9.2.6",
+        "typescript": "^4.5.4",
         "webpack": "^5.66.0",
-        "webpack-cli": "^4.9.1",
-        "@vscode/test-electron": "^2.0.3"
+        "webpack-cli": "^4.9.1"
+    },
+    "dependencies": {
+        "download": "^8.0.0",
+        "mkdirp": "^1.0.4",
+        "tar": "^6.1.11",
+        "tmp": "^0.2.1"
     }
 }
