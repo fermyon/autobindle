@@ -59,7 +59,7 @@ function downloadSource(): Errorable<string> {
 
 export function installLocation(tool: string, bin: string): string {
     // The ideal is to cache in extension storage (ExtensionContext::globalStorage)
-    // but shelljs can only run from a plain ol' file path, so file path it is.
+    // but exec can only run from a plain ol' file path, so file path it is.
     const basePath = path.join(home(), `.fermyon/autobindle/tools`);
     const toolPath = path.join(basePath, tool);
     const binSuffix = process.platform === 'win32' ? '.exe' : '';

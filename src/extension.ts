@@ -1,6 +1,5 @@
-import { ChildProcess } from 'child_process';
-import * as shelljs from 'shelljs';
 import * as vscode from 'vscode';
+import { ChildProcess, ExecException, execFile } from 'child_process';
 import { isErr } from './errorable';
 
 import * as installer from './installer';
@@ -48,20 +47,27 @@ async function start() {
     // Is there a current environment?  If not:
     //    * Are there existing environments in the config?  If so, prompt.
     //    * Otherwise, create a default environment.
+    const storeDirectory = `~/.fermyon/autobindle/data/default`;
+    
     // Start Bindle with appropriate options.
+    const port = vscode.workspace.getConfiguration().get<number>("autobindle.port");
+    const address = `127.0.0.1:${port}`;
     try {
         BINDLE_EXPECT_EXIT = false;
-        const childProcess = shelljs.exec(programFile, { async: true }, onBindleExit);
+        const args = [
+            "--unauthenticated",
+            "-i", address,
+            "-d", storeDirectory
+        ];
+        const childProcess = execFile(programFile, args, { }, onBindleExit);
         BINDLE_RUNNING_INSTANCE = childProcess;
     } catch (e) {
         await vscode.window.showErrorMessage(`Error launching Bindle server: ${e}`);
         return;
     }
 
-    // Record identification for the running instance.
     // TODO: consider a status bar item that shows when Bindle is running and can be hovered/clicked for info/commands
-    const port = vscode.workspace.getConfiguration().get<number>("autobindle.port");
-    await vscode.window.showInformationMessage(`Starting Bindle on port ${port}...`);
+    // This would be less intrusive than a notification on successful launch though maybe less obvious
 }
 
 function stop() {
@@ -87,10 +93,18 @@ function newEnvironment() {
     // Add to config
 }
 
-function onBindleExit(code: number, _stdout: string, stderr: string) {
-    if (BINDLE_EXPECT_EXIT || code === 0) {
-        return;
+function onBindleExit(e: ExecException | null, _stdout: string, stderr: string) {
+    if (BINDLE_EXPECT_EXIT) {
+        return;  // The thing causing the exit should clear the global
     }
     BINDLE_RUNNING_INSTANCE = null;
+
+    if (e && e.code === 0) {
+        return;
+    }
+    const code = (e && e.code) ? e.code.toString() : "no code";
+
+    // This is mainly but not entirely to handle the case of failure on startup,
+    // so the phrasing needs to be a bit generic.
     vscode.window.showErrorMessage(`Bindle server error (${code}): ${stderr}`);
 }
