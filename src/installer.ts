@@ -70,7 +70,7 @@ export function installLocation(tool: string, bin: string): string {
 function os(): string | null {
     switch (process.platform) {
         case 'win32': return 'windows';
-        case 'darwin': return 'darwin';
+        case 'darwin': return 'macos';
         case 'linux': return 'linux';
         default: return null;
     }
