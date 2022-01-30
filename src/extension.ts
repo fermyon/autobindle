@@ -3,9 +3,11 @@ import { ChildProcess, ExecException, execFile } from 'child_process';
 import { isErr } from './errorable';
 
 import * as installer from './installer';
+import { BindleStatusBarItem, newStatusBarItem } from './statusbar';
 
 let BINDLE_RUNNING_INSTANCE: ChildProcess | null = null;
 let BINDLE_EXPECT_EXIT = false;
+const BINDLE_STATUS_BAR_ITEM: BindleStatusBarItem = newStatusBarItem();
 
 export function activate(context: vscode.ExtensionContext) {
     
@@ -61,8 +63,7 @@ async function start() {
         return;
     }
 
-    // TODO: consider a status bar item that shows when Bindle is running and can be hovered/clicked for info/commands
-    // This would be less intrusive than a notification on successful launch though maybe less obvious
+    BINDLE_STATUS_BAR_ITEM.show(address);
 }
 
 async function stop() {
@@ -73,7 +74,6 @@ async function stop() {
     } else if (stopResult === StopResult.StopFailed) {
         await vscode.window.showErrorMessage("Bindle did not respond to stop request");
     }
-    // TODO: should we show a message if succeeded?
 }
 
 function switchEnvironment() {
@@ -94,11 +94,17 @@ function newEnvironment() {
     // Add to config
 }
 
+function markNotRunning() {
+    BINDLE_RUNNING_INSTANCE = null;
+    BINDLE_STATUS_BAR_ITEM.hide();
+}
+
 function onBindleExit(e: ExecException | null, _stdout: string, stderr: string) {
     if (BINDLE_EXPECT_EXIT) {
         return;  // The thing causing the exit should clear the global
     }
-    BINDLE_RUNNING_INSTANCE = null;
+
+    markNotRunning();
 
     if (e && e.code === 0) {
         return;
@@ -125,7 +131,7 @@ function tryStopRunningInstance(): StopResult {
             || BINDLE_RUNNING_INSTANCE.kill("SIGQUIT")
             || BINDLE_RUNNING_INSTANCE.kill("SIGKILL");
         if (killed) {
-            BINDLE_RUNNING_INSTANCE = null;
+            markNotRunning();
             return StopResult.Stopped;
         } else {
             return StopResult.StopFailed;
