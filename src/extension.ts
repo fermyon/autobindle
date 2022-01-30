@@ -20,12 +20,7 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
-    BINDLE_EXPECT_EXIT = true;
-    if (BINDLE_RUNNING_INSTANCE !== null && !BINDLE_RUNNING_INSTANCE.killed) {
-        BINDLE_RUNNING_INSTANCE.kill("SIGTERM")
-        || BINDLE_RUNNING_INSTANCE.kill("SIGQUIT")
-        || BINDLE_RUNNING_INSTANCE.kill("SIGKILL");
-    }
+    tryStopRunningInstance();
 }
 
 async function start() {
@@ -70,9 +65,15 @@ async function start() {
     // This would be less intrusive than a notification on successful launch though maybe less obvious
 }
 
-function stop() {
-    // Is Bindle already running?  If so, stop it.
-    // Otherwise, display a message.
+async function stop() {
+    const stopResult = tryStopRunningInstance();
+
+    if (stopResult === StopResult.NoInstanceRunning) {
+        await vscode.window.showInformationMessage("Bindle is not running");
+    } else if (stopResult === StopResult.StopFailed) {
+        await vscode.window.showErrorMessage("Bindle did not respond to stop request");
+    }
+    // TODO: should we show a message if succeeded?
 }
 
 function switchEnvironment() {
@@ -107,4 +108,27 @@ function onBindleExit(e: ExecException | null, _stdout: string, stderr: string) 
     // This is mainly but not entirely to handle the case of failure on startup,
     // so the phrasing needs to be a bit generic.
     vscode.window.showErrorMessage(`Bindle server error (${code}): ${stderr}`);
+}
+
+enum StopResult {
+    NoInstanceRunning,
+    Stopped,
+    StopFailed,
+}
+
+function tryStopRunningInstance(): StopResult {
+    BINDLE_EXPECT_EXIT = true;
+    if (BINDLE_RUNNING_INSTANCE === null || BINDLE_RUNNING_INSTANCE.killed) {
+        return StopResult.NoInstanceRunning;
+    } else {
+        const killed = BINDLE_RUNNING_INSTANCE.kill("SIGTERM")
+            || BINDLE_RUNNING_INSTANCE.kill("SIGQUIT")
+            || BINDLE_RUNNING_INSTANCE.kill("SIGKILL");
+        if (killed) {
+            BINDLE_RUNNING_INSTANCE = null;
+            return StopResult.Stopped;
+        } else {
+            return StopResult.StopFailed;
+        }
+    }
 }
