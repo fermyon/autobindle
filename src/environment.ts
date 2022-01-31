@@ -38,6 +38,30 @@ export async function environmentForStart(): Promise<Cancellable<BindleEnvironme
     }
 }
 
+export async function promptSwitch(): Promise<Cancellable<BindleEnvironment>> {
+    const activeEnvironmentName = vscode.workspace.getConfiguration().get<string>("autobindle.activeEnvironment");
+    const allEnvironments = vscode.workspace.getConfiguration().get<BindleEnvironment[]>("autobindle.environments") || [];
+
+    if (allEnvironments.length < 2) {
+        await vscode.window.showInformationMessage("There are no other Bindle environments to switch to.");
+        return cancelled();
+    }
+
+    const otherEnvironments = allEnvironments.filter(e => e.name !== activeEnvironmentName);
+
+    const selected = await vscode.window.showQuickPick(
+        otherEnvironments.map(asQuickPick),
+        { placeHolder: 'Environment to switch to' }
+    );
+    if (!selected) {
+        return cancelled();
+    }
+
+    const selectedEnvironment = selected.environment;
+    await setActive(selectedEnvironment.name);
+    return accepted(selectedEnvironment);
+}
+
 async function setActive(environmentName: string) {
     await vscode.workspace.getConfiguration().update("autobindle.activeEnvironment", environmentName, vscode.ConfigurationTarget.Global);
 }

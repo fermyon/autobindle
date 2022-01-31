@@ -1,14 +1,16 @@
 import * as vscode from 'vscode';
-import { ChildProcess, ExecException, execFile } from 'child_process';
+import { ChildProcess, execFile } from 'child_process';
 import { isErr } from './errorable';
 
 import * as installer from './installer';
 import { BindleStatusBarItem, newStatusBarItem } from './statusbar';
-import { environmentForStart } from './environment';
+import { environmentForStart, promptSwitch } from './environment';
 import { isCancelled } from './cancellable';
+import { longRunning } from './longrunning';
+import { sleep } from './sleep';
 
-let BINDLE_RUNNING_INSTANCE: ChildProcess | null = null;
-let BINDLE_EXPECT_EXIT = false;
+let ACTIVE_INSTANCE: ChildProcess | null = null;
+const STOPPING_INSTANCES: ChildProcess[] = [];
 const BINDLE_STATUS_BAR_ITEM: BindleStatusBarItem = newStatusBarItem();
 
 export function activate(context: vscode.ExtensionContext) {
@@ -29,7 +31,7 @@ export function deactivate() {
 
 async function start() {
     // Is Bindle already running?  If so, display current environment and return.
-    if (BINDLE_RUNNING_INSTANCE !== null && !BINDLE_RUNNING_INSTANCE.killed) {
+    if (ACTIVE_INSTANCE !== null && !ACTIVE_INSTANCE.killed) {
         // TODO: show port and environment
         await vscode.window.showInformationMessage(`Bindle is already running`);
         return;
@@ -43,28 +45,30 @@ async function start() {
     }
     const programFile = programFile_.value;
 
+    // Is there a current environment?  If not:
+    //    * Are there existing environments in the config?  If so, prompt.
+    //    * Otherwise, create a default environment.
     const environment_ = await environmentForStart();
     if (isCancelled(environment_)) {
         return;
     }
     const environment = environment_.value;
     const storeDirectory = environment.storagePath;
-    // Is there a current environment?  If not:
-    //    * Are there existing environments in the config?  If so, prompt.
-    //    * Otherwise, create a default environment.
     
     // Start Bindle with appropriate options.
     const port = vscode.workspace.getConfiguration().get<number>("autobindle.port");
     const address = `127.0.0.1:${port}`;
     try {
-        BINDLE_EXPECT_EXIT = false;
         const args = [
             "--unauthenticated",
             "-i", address,
             "-d", storeDirectory
         ];
-        const childProcess = execFile(programFile, args, { }, onBindleExit);
-        BINDLE_RUNNING_INSTANCE = childProcess;
+        const childProcess = execFile(programFile, args, { });
+        ACTIVE_INSTANCE = childProcess;
+        childProcess.on("exit",
+            (code, signal) => onBindleProcessExit(childProcess, code, signal)
+        );
     } catch (e) {
         await vscode.window.showErrorMessage(`Error launching Bindle server: ${e}`);
         return;
@@ -74,7 +78,7 @@ async function start() {
 }
 
 async function stop() {
-    const stopResult = tryStopRunningInstance();
+    const stopResult = await tryStopRunningInstance();
 
     if (stopResult === StopResult.NoInstanceRunning) {
         await vscode.window.showInformationMessage("Bindle is not running");
@@ -83,17 +87,27 @@ async function stop() {
     }
 }
 
-function switchEnvironment() {
-    // If there are no environments, or only one environment, display info
-    //    that there are no other environments to switch to, and return
-    // Show list of environments from config (with decorator for current)
-    // If user:
-    //   * cancels, do nothing
-    //   * selects active, show message that they are already on that
-    //   * selects other:
-    //     * if Bindle is running, record that and stop it
-    //     * change the `activeEnvironment` config
-    //     * if Bindle was running, restart it with the new environment
+async function restart() {
+    const stopResult = await tryStopRunningInstance();
+    if (stopResult === StopResult.StopFailed) {
+        await vscode.window.showErrorMessage("Unable to restart Bindle. Existing instance refused to terminate");
+    } else {
+        await start();
+    }
+}
+
+async function switchEnvironment() {
+    const environment_ = await promptSwitch();
+    if (isCancelled(environment_)) {
+        return;
+    }
+    const environment = environment_.value;
+
+    if (isRunning(ACTIVE_INSTANCE)) {
+        await longRunning(`Restarting Bindle in '${environment.name}' data environment...`, () =>
+            restart()
+        );
+    }
 }
 
 function newEnvironment() {
@@ -101,26 +115,39 @@ function newEnvironment() {
     // Add to config
 }
 
-function markNotRunning() {
-    BINDLE_RUNNING_INSTANCE = null;
-    BINDLE_STATUS_BAR_ITEM.hide();
+async function awaitNotRunning(instance: ChildProcess) {
+    if (isRunning(instance)) {
+        for (let i = 0; i < 20; ++i) {
+            if (isRunning(instance)) {
+                break;
+            }
+            sleep(50);
+        }
+    }
 }
 
-function onBindleExit(e: ExecException | null, _stdout: string, stderr: string) {
-    if (BINDLE_EXPECT_EXIT) {
-        return;  // The thing causing the exit should clear the global
-    }
-
-    markNotRunning();
-
-    if (e && e.code === 0) {
+async function onBindleProcessExit(process: ChildProcess, code: number | null, _signal: string | null) {
+    // Is it the current Bindle process terminating?  During a restart it can be an old one.
+    if (process !== ACTIVE_INSTANCE) {
         return;
     }
-    const code = (e && e.code) ? e.code.toString() : "no code";
+    if (STOPPING_INSTANCES.includes(process)) {
+        return;
+    }
+    if (code === 0) {
+        return;
+    }
 
-    // This is mainly but not entirely to handle the case of failure on startup,
-    // so the phrasing needs to be a bit generic.
-    vscode.window.showErrorMessage(`Bindle server error (${code}): ${stderr}`);
+    // It is the active instance, we aren't stopping it, and it did not exit successfully
+    // This can be either:
+    // * It failed on startup
+    // * A user killed it from the CLI
+    // * It suffered some fatal internal error
+    // TODO: extract stderr and display if suitable
+    ACTIVE_INSTANCE = null;
+    BINDLE_STATUS_BAR_ITEM.hide();
+    const codeText = code ? code.toString() : "no code";
+    vscode.window.showErrorMessage(`Bindle server error (${codeText})`);
 }
 
 enum StopResult {
@@ -129,19 +156,40 @@ enum StopResult {
     StopFailed,
 }
 
-function tryStopRunningInstance(): StopResult {
-    BINDLE_EXPECT_EXIT = true;
-    if (BINDLE_RUNNING_INSTANCE === null || BINDLE_RUNNING_INSTANCE.killed) {
+async function tryStopRunningInstance(): Promise<StopResult> {
+    if (ACTIVE_INSTANCE === null || ACTIVE_INSTANCE.killed) {
         return StopResult.NoInstanceRunning;
     } else {
-        const killed = BINDLE_RUNNING_INSTANCE.kill("SIGTERM")
-            || BINDLE_RUNNING_INSTANCE.kill("SIGQUIT")
-            || BINDLE_RUNNING_INSTANCE.kill("SIGKILL");
+        const instanceToStop = ACTIVE_INSTANCE;
+        STOPPING_INSTANCES.push(instanceToStop);
+        const killed = instanceToStop.kill("SIGTERM")
+            || instanceToStop.kill("SIGQUIT")
+            || instanceToStop.kill("SIGKILL");
         if (killed) {
-            markNotRunning();
-            return StopResult.Stopped;
+            await awaitNotRunning(instanceToStop);
+            if (isRunning(instanceToStop)) {
+                return StopResult.StopFailed;
+            } else {
+                removeItem(STOPPING_INSTANCES, instanceToStop);
+                ACTIVE_INSTANCE = null;
+                BINDLE_STATUS_BAR_ITEM.hide();
+                return StopResult.Stopped;
+            }
         } else {
             return StopResult.StopFailed;
         }
+    }
+}
+
+function isRunning(instance: ChildProcess | null): boolean {
+    return instance !== null &&
+        instance.exitCode === null &&
+        !instance.killed;
+}
+
+function removeItem<T>(array: Array<T>, item: T) {
+    const index = array.indexOf(item);
+    if (index >= 0) {
+        array.splice(index, 0);
     }
 }
