@@ -4,6 +4,8 @@ import { isErr } from './errorable';
 
 import * as installer from './installer';
 import { BindleStatusBarItem, newStatusBarItem } from './statusbar';
+import { environmentForStart } from './environment';
+import { isCancelled } from './cancellable';
 
 let BINDLE_RUNNING_INSTANCE: ChildProcess | null = null;
 let BINDLE_EXPECT_EXIT = false;
@@ -41,10 +43,15 @@ async function start() {
     }
     const programFile = programFile_.value;
 
+    const environment_ = await environmentForStart();
+    if (isCancelled(environment_)) {
+        return;
+    }
+    const environment = environment_.value;
+    const storeDirectory = environment.storagePath;
     // Is there a current environment?  If not:
     //    * Are there existing environments in the config?  If so, prompt.
     //    * Otherwise, create a default environment.
-    const storeDirectory = `~/.fermyon/autobindle/data/default`;
     
     // Start Bindle with appropriate options.
     const port = vscode.workspace.getConfiguration().get<number>("autobindle.port");
@@ -63,7 +70,7 @@ async function start() {
         return;
     }
 
-    BINDLE_STATUS_BAR_ITEM.show(address);
+    BINDLE_STATUS_BAR_ITEM.show(environment.name, address);
 }
 
 async function stop() {
