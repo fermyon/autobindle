@@ -4,7 +4,7 @@ import { isErr } from './errorable';
 
 import * as installer from './installer';
 import { BindleStatusBarItem, newStatusBarItem } from './statusbar';
-import { environmentExists, environmentForStart, promptSwitch, setEnvironment } from './environment';
+import { autoStoragePath, environmentExists, environmentForStart, promptSwitch, setEnvironment } from './environment';
 import { isCancelled } from './cancellable';
 import { longRunning } from './longrunning';
 import { sleep } from './sleep';
@@ -20,6 +20,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('autobindle.stop', stop),
         vscode.commands.registerCommand('autobindle.switch', switchEnvironment),
         vscode.commands.registerCommand('autobindle.new', newEnvironment),
+        vscode.commands.registerCommand('autobindle.newInFolder', newEnvironmentInFolder),
     ];
 
     context.subscriptions.push(...disposables);
@@ -115,6 +116,26 @@ async function switchEnvironment() {
 }
 
 async function newEnvironment() {
+    const name = await vscode.window.showInputBox({ prompt: "A name for the new Bindle data environment" });
+    if (!name) {
+        return;
+    }
+    if (environmentExists(name)) {
+        await vscode.window.showErrorMessage("That environment already exists");
+        return;
+    }
+    if (!isDirectorySafe(name)) {
+        await vscode.window.showErrorMessage("The environment name is used as a directory name. Please choose one with alphanumeric and dash/underscore characters only.");
+        return;
+    }
+
+    const storagePath = autoStoragePath(name);
+
+    await setEnvironment(name, storagePath);
+    await restartIfRunning(name);
+}
+
+async function newEnvironmentInFolder() {
     const name = await vscode.window.showInputBox({ prompt: "A name for the new Bindle data environment" });
     if (!name) {
         return;
@@ -223,4 +244,9 @@ function removeItem<T>(array: Array<T>, item: T) {
     if (index >= 0) {
         array.splice(index, 0);
     }
+}
+
+function isDirectorySafe(name: string): boolean {
+    const superSafeRegex = /^[-_0-9A-Za-z]+$/;
+    return superSafeRegex.test(name);
 }

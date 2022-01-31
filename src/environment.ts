@@ -87,9 +87,14 @@ export async function setEnvironment(environmentName: string, storagePath: strin
 
 async function createDefaultEnvironment(): Promise<BindleEnvironment> {
     const name = "default";
+    const storagePath = autoStoragePath(name);
+    return await setEnvironment(name, storagePath);
+}
+
+export function autoStoragePath(name: string) {
     const basePath = layout.dataFolder();
     const storagePath = path.join(basePath, name);
-    return await setEnvironment(name, storagePath);
+    return storagePath;
 }
 
 function asQuickPick(environment: BindleEnvironment): vscode.QuickPickItem & { readonly environment: BindleEnvironment } {

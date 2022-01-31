@@ -13,7 +13,8 @@
         "onCommand:autobindle.start",
         "onCommand:autobindle.stop",
         "onCommand:autobindle.switch",
-        "onCommand:autobindle.new"
+        "onCommand:autobindle.new",
+        "onCommand:autobindle.newInFolder"
     ],
     "main": "./dist/extension.js",
     "contributes": {
@@ -37,6 +38,11 @@
                 "command": "autobindle.new",
                 "category": "Bindle",
                 "title": "New Environment"
+            },
+            {
+                "command": "autobindle.newInFolder",
+                "category": "Bindle",
+                "title": "New Environment in Chosen Folder"
             }
         ],
         "configuration": {
@@ -67,6 +73,16 @@
                     "type": "string"
                 }
             }
+        }
+    },
+    "capabilities": {
+        "untrustedWorkspaces": {
+            "supported": "limited",
+            "description": "Untrusted projects may not specify their own environments",
+            "restrictedConfigurations": [
+                "autobindle.activeEnvironment",
+                "autobindle.environments"
+            ]
         }
     },
     "scripts": {
