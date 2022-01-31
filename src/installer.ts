@@ -5,6 +5,7 @@ import * as stream from 'stream';
 import * as tar from 'tar';
 import * as tmp from 'tmp';
 import { Errorable, err, ok, isErr, isOk } from "./errorable";
+import * as layout from './layout';
 import { longRunning } from './longrunning';
 
 const BINDLE_DONWLOAD_URL_TEMPLATE = "https://bindle.blob.core.windows.net/releases/bindle-v0.7.1-{{subst:os}}-{{subst:arch}}.tar.gz";
@@ -60,7 +61,7 @@ function downloadSource(): Errorable<string> {
 export function installLocation(tool: string, bin: string): string {
     // The ideal is to cache in extension storage (ExtensionContext::globalStorage)
     // but exec can only run from a plain ol' file path, so file path it is.
-    const basePath = path.join(home(), `.fermyon/autobindle/tools`);
+    const basePath = layout.toolsFolder();
     const toolPath = path.join(basePath, tool);
     const binSuffix = process.platform === 'win32' ? '.exe' : '';
     const toolFile = path.join(toolPath, bin + binSuffix);
@@ -125,24 +126,6 @@ async function downloadToTempFile(sourceUrl: string): Promise<Errorable<string>>
         return ok(tempFileObj.name);
     }
     return err(downloadResult.message);
-}
-
-function home(): string {
-    return process.env['HOME'] ||
-        concatIfSafe(process.env['HOMEDRIVE'], process.env['HOMEPATH']) ||
-        process.env['USERPROFILE'] ||
-        '';
-}
-
-function concatIfSafe(homeDrive: string | undefined, homePath: string | undefined): string | undefined {
-    if (homeDrive && homePath) {
-        const safe = !homePath.toLowerCase().startsWith('\\windows\\system32');
-        if (safe) {
-            return homeDrive.concat(homePath);
-        }
-    }
-
-    return undefined;
 }
 
 async function untar(sourceFile: string, destinationFolder: string): Promise<Errorable<null>> {

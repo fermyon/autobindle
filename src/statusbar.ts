@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 
 export interface BindleStatusBarItem {
-    show(address: string): void;
+    show(environmentName: string, address: string): void;
     hide(): void;
 }
 
@@ -15,12 +15,12 @@ class BindleStatusBarItemImpl implements BindleStatusBarItem {
         this.item = null;
     }
 
-    show(address: string) {
+    show(environmentName: string, address: string) {
         if (this.item === null) {
             this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right);
             this.item.text = "Bindle";
         }
-        this.item.tooltip = `Running on ${address}`;
+        this.item.tooltip = `Running on ${address}\nData environment: ${environmentName}`;
         this.item.show();
     }
 
