@@ -3,6 +3,9 @@
     "displayName": "autobindle",
     "description": "Provides Bindle registry services to VS Code projects and extensions",
     "version": "0.0.1",
+    "repository": {
+        "url": "https://github.com/fermyon/autobindle"
+    },
     "engines": {
         "vscode": "^1.63.0"
     },
