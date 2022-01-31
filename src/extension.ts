@@ -4,7 +4,7 @@ import { isErr } from './errorable';
 
 import * as installer from './installer';
 import { BindleStatusBarItem, newStatusBarItem } from './statusbar';
-import { environmentForStart, promptSwitch } from './environment';
+import { environmentExists, environmentForStart, promptSwitch, setEnvironment } from './environment';
 import { isCancelled } from './cancellable';
 import { longRunning } from './longrunning';
 import { sleep } from './sleep';
@@ -87,6 +87,14 @@ async function stop() {
     }
 }
 
+async function restartIfRunning(environmentName: string) {
+    if (isRunning(ACTIVE_INSTANCE)) {
+        await longRunning(`Restarting Bindle in '${environmentName}' data environment...`, () =>
+            restart()
+        );
+    }
+}
+
 async function restart() {
     const stopResult = await tryStopRunningInstance();
     if (stopResult === StopResult.StopFailed) {
@@ -103,16 +111,39 @@ async function switchEnvironment() {
     }
     const environment = environment_.value;
 
-    if (isRunning(ACTIVE_INSTANCE)) {
-        await longRunning(`Restarting Bindle in '${environment.name}' data environment...`, () =>
-            restart()
-        );
-    }
+    await restartIfRunning(environment.name);
 }
 
-function newEnvironment() {
-    // Prompt for name and path
-    // Add to config
+async function newEnvironment() {
+    const name = await vscode.window.showInputBox({ prompt: "A name for the new Bindle data environment" });
+    if (!name) {
+        return;
+    }
+    if (environmentExists(name)) {
+        const overwrite = 'Update existing environment';
+        const response = await vscode.window.showErrorMessage(`An environment with the name '${name}' already exists.`, overwrite, 'Cancel');
+        if (response !== overwrite) {
+            return;
+        }
+    }
+
+    const storagePath = await vscode.window.showOpenDialog({
+        title: "Bindle storage path for the new environment",
+        canSelectFiles: false,
+        canSelectFolders: true,
+        canSelectMany: false,
+        openLabel: "Create Environment"
+    });
+    if (!storagePath || storagePath.length !== 1) {
+        return;
+    }
+    if (storagePath[0].scheme !== 'file') {
+        await vscode.window.showErrorMessage("The Bindle dev server only works with filesystem locations");
+        return;
+    }
+
+    await setEnvironment(name, storagePath[0].fsPath);
+    await restartIfRunning(name);
 }
 
 async function awaitNotRunning(instance: ChildProcess) {

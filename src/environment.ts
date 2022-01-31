@@ -66,7 +66,12 @@ async function setActive(environmentName: string) {
     await vscode.workspace.getConfiguration().update("autobindle.activeEnvironment", environmentName, vscode.ConfigurationTarget.Global);
 }
 
-async function setEnvironment(environmentName: string, storagePath: string): Promise<BindleEnvironment> {
+export function environmentExists(environmentName: string): boolean {
+    const allEnvironments = vscode.workspace.getConfiguration().get<BindleEnvironment[]>("autobindle.environments") || [];
+    return allEnvironments.some(e => e.name === environmentName);
+}
+
+export async function setEnvironment(environmentName: string, storagePath: string): Promise<BindleEnvironment> {
     const allEnvironments = vscode.workspace.getConfiguration().get<BindleEnvironment[]>("autobindle.environments") || [];
     const newEnvironment = { name: environmentName, storagePath };
     const existingEnvironmentIndex = allEnvironments.findIndex(e => e.name === environmentName);
