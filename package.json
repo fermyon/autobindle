@@ -1,14 +1,24 @@
 {
     "name": "autobindle",
+    "publisher": "fermyon",
     "displayName": "autobindle",
     "description": "Provides Bindle registry services to VS Code projects and extensions",
+    "icon": "images/logo.png",
     "version": "0.0.1",
+    "preview": true,
     "repository": {
+        "type": "git",
         "url": "https://github.com/fermyon/autobindle"
     },
+    "license": "Apache-2.0",
     "engines": {
         "vscode": "^1.63.0"
     },
+    "keywords": [
+        "bindle",
+        "webassembly",
+        "wasm"
+    ],
     "categories": [
         "Other"
     ],
