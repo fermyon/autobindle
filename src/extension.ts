@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { ChildProcess, execFile } from 'child_process';
-import { isErr } from './errorable';
+import { err, Errorable, isErr, isOk, ok } from './errorable';
 
 import * as installer from './installer';
 import { BindleStatusBarItem, newStatusBarItem } from './statusbar';
@@ -12,6 +12,8 @@ import { sleep } from './sleep';
 let ACTIVE_INSTANCE: ChildProcess | null = null;
 const STOPPING_INSTANCES: ChildProcess[] = [];
 const BINDLE_STATUS_BAR_ITEM: BindleStatusBarItem = newStatusBarItem();
+
+const OUTPUT_CHANNEL = vscode.window.createOutputChannel('Autobindle');
 
 export function activate(context: vscode.ExtensionContext) {
     
@@ -45,6 +47,26 @@ async function start() {
         return;
     }
     const programFile = programFile_.value;
+
+    // Is the installed binary up to date?  If not, download a new one.
+    // (If we get an error checking the version, ignore it - it's not work
+    // failing for.)
+    const skipVersionCheck = vscode.workspace.getConfiguration().get<boolean>("autobindle.skipVersionCheck") || false;
+    if (!skipVersionCheck) {
+        const version = await programVersion(programFile);
+        if (isOk(version)) {
+            const isUpToDate = version.value.includes(installer.BINDLE_VERSION);
+            if (!isUpToDate) {
+                const reinstallResult = await installer.reinstallBindle();
+                if (isErr(reinstallResult)) {
+                    const message = `Version ${installer.BINDLE_VERSION} of Bindle is available but we could not install it. You are on version '${version.value}'.`;
+                    OUTPUT_CHANNEL.appendLine(message);
+                    OUTPUT_CHANNEL.appendLine(reinstallResult.message);
+                    vscode.window.showWarningMessage(message);
+                }
+            }
+        }
+    }
 
     // Is there a current environment?  If not:
     //    * Are there existing environments in the config?  If so, prompt.
@@ -249,4 +271,18 @@ function removeItem<T>(array: Array<T>, item: T) {
 function isDirectorySafe(name: string): boolean {
     const superSafeRegex = /^[-_0-9A-Za-z]+$/;
     return superSafeRegex.test(name);
+}
+
+function programVersion(programFile: string): Promise<Errorable<string>> {
+    return new Promise((resolve, _) => {
+        execFile(programFile, ["--version"], (error, stdout, stderr) => {
+            if (error) {
+                resolve(err(`${error} (${stderr.trim()})`));
+            } else if (stderr && stderr.trim().length > 0) {
+                resolve(err(stderr.trim()));
+            } else {
+                resolve(ok(stdout.trim()));
+            }
+        });
+    });
 }

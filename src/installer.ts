@@ -8,7 +8,8 @@ import { Errorable, err, ok, isErr, isOk } from "./errorable";
 import * as layout from './layout';
 import { longRunning } from './longrunning';
 
-const BINDLE_DONWLOAD_URL_TEMPLATE = "https://bindle.blob.core.windows.net/releases/bindle-v0.7.1-{{subst:os}}-{{subst:arch}}.tar.gz";
+export const BINDLE_VERSION = "0.8.0";
+const BINDLE_DONWLOAD_URL_TEMPLATE = `https://bindle.blob.core.windows.net/releases/bindle-v${BINDLE_VERSION}-{{subst:os}}-{{subst:arch}}.tar.gz`;
 const BINDLE_TOOL_NAME = "bindle";
 const BINDLE_BIN_NAME = "bindle-server";
 
@@ -23,6 +24,35 @@ export async function ensureBindleInstalled(): Promise<Errorable<string>> {
         }
     }
     return ok(toolFile);
+}
+
+export async function reinstallBindle(): Promise<Errorable<null>> {
+    const toolFile = installLocation(BINDLE_TOOL_NAME, BINDLE_BIN_NAME);
+    const backupFile = installLocation(BINDLE_TOOL_NAME, BINDLE_BIN_NAME + ".bak");
+
+    if (fs.existsSync(backupFile)) {
+        fs.unlinkSync(backupFile);
+    }
+    if (fs.existsSync(toolFile)) {  // which we expect it to but computers
+        fs.renameSync(toolFile, backupFile);
+    }
+
+    const downloadResult = await longRunning("Downloading new Bindle executable", () =>
+        downloadBindleTo(toolFile)
+    );
+    if (isErr(downloadResult)) {
+        // compensate before returning
+        if (fs.existsSync(toolFile)) {  // in case it got created before failing
+            fs.unlinkSync(toolFile);
+        }
+        if (fs.existsSync(backupFile)) {
+            fs.renameSync(backupFile, toolFile);
+        }
+        return downloadResult;
+    }
+
+    // We keep the backup in case the user wants to manually revert.
+    return ok(null);
 }
 
 async function downloadBindleTo(toolFile: string): Promise<Errorable<null>> {
