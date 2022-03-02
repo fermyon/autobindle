@@ -64,6 +64,10 @@
                     "type": "integer",
                     "default": 8080
                 },
+                "autobindle.skipVersionCheck": {
+                    "type": "boolean",
+                    "default": false
+                },
                 "autobindle.environments": {
                     "scope": "machine",
                     "type": "array",
