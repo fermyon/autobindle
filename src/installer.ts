@@ -8,7 +8,8 @@ import { Errorable, err, ok, isErr, isOk } from "./errorable";
 import * as layout from './layout';
 import { longRunning } from './longrunning';
 
-const BINDLE_DONWLOAD_URL_TEMPLATE = "https://bindle.blob.core.windows.net/releases/bindle-v0.7.1-{{subst:os}}-{{subst:arch}}.tar.gz";
+const BINDLE_VERSION = "0.8.0";
+const BINDLE_DONWLOAD_URL_TEMPLATE = `https://bindle.blob.core.windows.net/releases/bindle-v${BINDLE_VERSION}-{{subst:os}}-{{subst:arch}}.tar.gz`;
 const BINDLE_TOOL_NAME = "bindle";
 const BINDLE_BIN_NAME = "bindle-server";
 
